@@ -1,0 +1,145 @@
+{
+  "_comment": "=================================================================",
+  "_comment2": "VAPI CUSTOM TOOL CONFIGURATION - Dental Care Ireland AI Receptionist",
+  "_comment3": "Tool Name: book_appointment",
+  "_comment4": "Paste the 'tool' object below into Vapi's Custom Tool JSON editor.",
+  "_comment5": "Replace SERVER_URL with your actual n8n webhook URL.",
+  "_comment6": "=================================================================",
+
+  "tool": {
+    "type": "function",
+    "function": {
+      "name": "book_appointment",
+      "description": "Books a dental appointment for a patient at Dental Care Ireland. Call this tool ONLY after you have collected ALL of the following from the patient: their full name, phone number, email address, the service they need, and their preferred appointment date. This will create a calendar event, log the booking to the system, and send a confirmation email directly to the patient.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The patient's full name (first name and last name). Example: 'John Murphy'"
+          },
+          "phone": {
+            "type": "string",
+            "description": "The patient's phone number. Accept any format the patient provides, including country code. Example: '046 123 4567' or '+353 86 123 4567'"
+          },
+          "email": {
+            "type": "string",
+            "description": "The patient's email address where the confirmation will be sent. Must be a valid email format. Example: 'john.murphy@example.com'"
+          },
+          "service": {
+            "type": "string",
+            "description": "The type of dental service the patient needs. Common options: checkup, cleaning, filling, extraction, whitening, consultation, emergency, orthodontic, root canal. Use the patient's exact words if not in this list."
+          },
+          "date": {
+            "type": "string",
+            "description": "The appointment date in YYYY-MM-DD format. Convert whatever date the patient says into this format. Example: if patient says 'March 15th 2024', use '2024-03-15'"
+          },
+          "time": {
+            "type": "string",
+            "description": "The appointment time in HH:MM 24-hour format. This is optional - if the patient does not specify a time, omit this field and a default time of 14:00 will be used. Example: '09:30' for 9:30 AM, '14:00' for 2:00 PM"
+          }
+        },
+        "required": ["name", "phone", "email", "service", "date"]
+      }
+    },
+    "server": {
+      "url": "YOUR_N8N_WEBHOOK_URL_HERE",
+      "timeoutSeconds": 20
+    }
+  },
+
+  "vapi_ui_instructions": {
+    "_note": "Instructions for filling in Vapi's Custom Tool UI form:",
+    "Tool Name": "book_appointment",
+    "Description": "Books a dental appointment for a patient at Dental Care Ireland. Call this after collecting patient name, phone, email, service needed, and appointment date.",
+    "Server URL": "YOUR_N8N_WEBHOOK_URL_HERE (e.g. https://your-n8n.cloud/webhook/dental-booking)",
+    "Method": "POST",
+    "Timeout (seconds)": 20,
+
+    "Parameters": {
+      "_note": "Add these 6 parameters in Vapi's Parameters section:",
+      "1_name": {
+        "Key": "name",
+        "Type": "string",
+        "Description": "Patient's full name (first and last name)",
+        "Required": true
+      },
+      "2_phone": {
+        "Key": "phone",
+        "Type": "string",
+        "Description": "Patient's phone number in any format",
+        "Required": true
+      },
+      "3_email": {
+        "Key": "email",
+        "Type": "string",
+        "Description": "Patient's email address for confirmation",
+        "Required": true
+      },
+      "4_service": {
+        "Key": "service",
+        "Type": "string",
+        "Description": "Type of dental service: checkup, cleaning, filling, extraction, whitening, consultation, emergency, etc.",
+        "Required": true
+      },
+      "5_date": {
+        "Key": "date",
+        "Type": "string",
+        "Description": "Appointment date in YYYY-MM-DD format (e.g. 2024-03-15)",
+        "Required": true
+      },
+      "6_time": {
+        "Key": "time",
+        "Type": "string",
+        "Description": "Appointment time in HH:MM 24-hour format (e.g. 14:30). Optional - defaults to 14:00 if not provided.",
+        "Required": false
+      }
+    }
+  },
+
+  "vapi_system_prompt_snippet": {
+    "_note": "Add this section to Emma's system prompt to guide when and how to use the tool:",
+    "prompt": "## Booking Appointments\n\nWhen a patient wants to book an appointment:\n1. Collect their FULL NAME\n2. Collect their PHONE NUMBER\n3. Collect their EMAIL ADDRESS (spell it out letter by letter to confirm)\n4. Confirm the SERVICE they need (e.g. checkup, cleaning, filling)\n5. Confirm their preferred DATE (convert to YYYY-MM-DD format internally)\n6. Ask if they have a preferred TIME (optional - default is 2:00 PM)\n\nOnly call `book_appointment` when you have ALL required information confirmed.\n\nAfter calling the tool:\n- If status is 'success': Tell the patient 'Your appointment has been confirmed! You'll receive a confirmation email at [email]. Your booking ID is [appointment_id].'\n- If you get an error response: Apologise and ask the patient to call the clinic directly at 046 902 1372."
+  },
+
+  "example_vapi_call": {
+    "_note": "This is what Vapi will send to your n8n webhook:",
+    "method": "POST",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "name": "Mary O'Brien",
+      "phone": "086 123 4567",
+      "email": "mary.obrien@example.com",
+      "service": "cleaning",
+      "date": "2024-03-20",
+      "time": "10:00"
+    }
+  },
+
+  "example_success_response": {
+    "_note": "This is what your n8n workflow returns to Vapi on success:",
+    "status": "success",
+    "message": "Booking confirmed",
+    "appointment_id": "DCN-1710924000000-7842",
+    "booking_details": {
+      "name": "Mary O'Brien",
+      "date": "2024-03-20",
+      "time": "10:00"
+    }
+  },
+
+  "example_error_response_400": {
+    "_note": "Returned when required fields are missing:",
+    "status": "error",
+    "message": "Validation failed. Missing or invalid required fields.",
+    "errors": ["email is required", "date must be in YYYY-MM-DD format"]
+  },
+
+  "example_error_response_500": {
+    "_note": "Returned when Calendar creation fails:",
+    "status": "error",
+    "message": "System error - booking may not be complete. Please call 046 902 1372 to confirm your appointment."
+  }
+}
