@@ -103,43 +103,60 @@
   },
 
   "example_vapi_call": {
-    "_note": "This is what Vapi will send to your n8n webhook:",
+    "_note": "Vapi wraps tool arguments in this nested format when calling your webhook:",
     "method": "POST",
-    "headers": {
-      "Content-Type": "application/json"
-    },
+    "headers": { "Content-Type": "application/json" },
     "body": {
-      "name": "Mary O'Brien",
-      "phone": "086 123 4567",
-      "email": "mary.obrien@example.com",
-      "service": "cleaning",
-      "date": "2024-03-20",
-      "time": "10:00"
+      "message": {
+        "type": "tool-calls",
+        "toolCallList": [
+          {
+            "id": "toolu_01AbCdEfGhIjKlMnOpQrStUv",
+            "type": "function",
+            "function": {
+              "name": "book_appointment",
+              "arguments": {
+                "name": "Mary O'Brien",
+                "phone": "086 123 4567",
+                "email": "mary.obrien@example.com",
+                "service": "cleaning",
+                "date": "2024-03-20",
+                "time": "10:00"
+              }
+            }
+          }
+        ]
+      }
     }
   },
 
   "example_success_response": {
-    "_note": "This is what your n8n workflow returns to Vapi on success:",
-    "status": "success",
-    "message": "Booking confirmed",
-    "appointment_id": "DCN-1710924000000-7842",
-    "booking_details": {
-      "name": "Mary O'Brien",
-      "date": "2024-03-20",
-      "time": "10:00"
-    }
+    "_note": "Vapi requires this results array format — NOT a status/message object:",
+    "results": [
+      {
+        "toolCallId": "toolu_01AbCdEfGhIjKlMnOpQrStUv",
+        "result": "Booking confirmed. Your booking ID is DCN-1710924000000-7842. A confirmation email has been sent to mary.obrien@example.com."
+      }
+    ]
   },
 
   "example_error_response_400": {
     "_note": "Returned when required fields are missing:",
-    "status": "error",
-    "message": "Validation failed. Missing or invalid required fields.",
-    "errors": ["email is required", "date must be in YYYY-MM-DD format"]
+    "results": [
+      {
+        "toolCallId": "toolu_01AbCdEfGhIjKlMnOpQrStUv",
+        "result": "Booking failed: email is required, date is required. Please ask the patient to provide all required information."
+      }
+    ]
   },
 
   "example_error_response_500": {
     "_note": "Returned when Calendar creation fails:",
-    "status": "error",
-    "message": "System error - booking may not be complete. Please call 046 902 1372 to confirm your appointment."
+    "results": [
+      {
+        "toolCallId": "toolu_01AbCdEfGhIjKlMnOpQrStUv",
+        "result": "System error - unable to complete the booking. Please tell the patient to call the clinic directly at 046 902 1372."
+      }
+    ]
   }
 }
