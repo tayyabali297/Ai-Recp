@@ -32,7 +32,7 @@
           },
           "date": {
             "type": "string",
-            "description": "The appointment date in YYYY-MM-DD format. Convert whatever date the patient says into this format. Example: if patient says 'March 15th 2024', use '2024-03-15'"
+            "description": "The appointment date in YYYY-MM-DD format. Convert whatever date the patient says into this format. Always use the current year (2026) unless the patient explicitly states a different year. Example: if patient says 'March 15th', use '2026-03-15'"
           },
           "time": {
             "type": "string",
@@ -85,7 +85,7 @@
       "5_date": {
         "Key": "date",
         "Type": "string",
-        "Description": "Appointment date in YYYY-MM-DD format (e.g. 2024-03-15)",
+        "Description": "Appointment date in YYYY-MM-DD format (e.g. 2026-03-15)",
         "Required": true
       },
       "6_time": {
@@ -120,7 +120,7 @@
                 "phone": "086 123 4567",
                 "email": "mary.obrien@example.com",
                 "service": "cleaning",
-                "date": "2024-03-20",
+                "date": "2026-03-20",
                 "time": "10:00"
               }
             }
