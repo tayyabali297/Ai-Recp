@@ -1,0 +1,123 @@
+I need you to build a complete n8n workflow for an AI voice receptionist booking system. Here are the exact requirements:
+
+## SYSTEM OVERVIEW:
+Build an n8n workflow that receives appointment bookings from Vapi AI, logs them to Google Sheets, creates Google Calendar events, and sends email confirmations to patients.
+
+## WORKFLOW REQUIREMENTS:
+
+### 1. WEBHOOK RECEIVER (Entry Point)
+- Custom webhook that receives POST requests from Vapi
+- Should accept these parameters:
+  * name (string, required) - Patient full name
+  * phone (string, required) - Patient phone number  
+  * email (string, required) - Patient email address
+  * service (string, required) - Type of appointment (checkup, cleaning, etc.)
+  * date (string, required) - Appointment date in YYYY-MM-DD format
+  * time (string, optional) - Appointment time in HH:MM format
+- Include validation to ensure all required fields are present
+- Error handling: If validation fails, return 400 status with error message
+
+### 2. GOOGLE SHEETS LOGGING
+- Add a row to Google Sheets with these columns:
+  * Column A: Name ({{name}})
+  * Column B: Phone ({{phone}})
+  * Column C: Email ({{email}})
+  * Column D: Service ({{service}})
+  * Column E: Date ({{date}})
+  * Column F: Time ({{time}} or "Not specified")
+  * Column G: Status (default: "Pending")
+  * Column H: Timestamp (current date/time)
+- Spreadsheet name: "Dental Bookings"
+- Sheet name: "Bookings"
+- Error handling: If Sheets fails, log error but continue workflow
+
+### 3. GOOGLE CALENDAR EVENT CREATION
+- Create event with these settings:
+  * Event name: "{{name}} - {{service}}"
+  * Start date/time: Combine {{date}} and {{time}} (default time: 14:00 if not provided)
+  * Duration: 30 minutes
+  * Description: "Phone: {{phone}}\nEmail: {{email}}\nService: {{service}}"
+  * Location: "15 Watergate Street, Navan, Co. Meath, Ireland"
+  * Calendar: Primary calendar
+- Error handling: If calendar creation fails, return 500 error to Vapi and send alert email
+
+### 4. EMAIL CONFIRMATION TO PATIENT
+- Send email using Gmail or SMTP
+- To: {{email}}
+- Subject: "Appointment Confirmed - Dental Care Ireland"
+- Body template:
+Hi {{name}},
+Your appointment at Dental Care Ireland has been confirmed!
+📅 Date: {{date}} ⏰ Time: {{time}} 🦷 Service: {{service}} 📍 Location: 15 Watergate Street, Navan, Co. Meath
+If you need to reschedule, please call us at 046 902 1372.
+See you soon!
+Dental Care Ireland Team
+- Error handling: If email fails, log error but continue (don't fail entire workflow)
+
+### 5. WEBHOOK RESPONSE TO VAPI
+- Return HTTP 200 status with JSON body:
+```json
+  {
+    "status": "success",
+    "message": "Booking confirmed",
+    "appointment_id": "{{generated_id}}",
+    "booking_details": {
+      "name": "{{name}}",
+      "date": "{{date}}",
+      "time": "{{time}}"
+    }
+  }
+```
+- This tells Vapi the booking succeeded
+
+### 6. ERROR HANDLING & NOTIFICATIONS
+- If ANY critical step fails (Calendar creation), send alert email to clinic admin
+- Admin alert email to: majesticson297@gmail.com
+- Subject: "🚨 Booking System Error"
+- Include: Error details, failed data, timestamp
+- Implement try-catch logic around Calendar and Sheets nodes
+- Return appropriate HTTP status codes (200 success, 400 validation error, 500 system error)
+
+## VAPI TOOL CONFIGURATION:
+
+Also provide the exact JSON schema I need to paste into Vapi's Custom Tool configuration:
+
+### Tool Settings:
+- Tool name: book_appointment
+- Description: Books patient appointment in calendar and sends confirmation
+- Server URL: [I'll fill this in with my n8n webhook URL]
+- Method: POST
+- Timeout: 20 seconds
+
+### Tool Parameters Schema:
+Provide the complete JSON schema with all 6 parameters (name, phone, email, service, date, time) including descriptions, types, and required flags.
+
+### Static Body Fields Configuration:
+Provide the exact key-value pairs for Vapi's Static Body Fields section.
+
+## ADDITIONAL FEATURES:
+
+- Add timestamps to all data points
+- Include unique booking ID generation (use timestamp + random 4 digits)
+- Log all webhook requests to a separate "Logs" sheet for debugging
+- Include data validation (email format check, phone format check, date format check)
+- Handle timezone correctly (Europe/Dublin)
+
+## OUTPUT FORMAT:
+
+Please provide:
+1. Complete n8n workflow JSON (ready to import)
+2. Vapi Custom Tool JSON schema (ready to paste)
+3. Step-by-step instructions for:
+   - How to import the workflow into n8n
+   - What credentials I need to configure
+   - How to get the webhook URL
+   - How to paste the tool schema into Vapi
+4. Testing checklist to verify everything works
+
+## BUSINESS CONTEXT:
+
+This is for Dental Care Ireland in Navan. The AI receptionist (Emma) will collect patient details over the phone, then call this workflow via the tool. The system must be reliable because it's handling real patient bookings.
+
+Build this to be production-ready, professional, and bulletproof. Include comments in the JSON explaining what each node does.
+
