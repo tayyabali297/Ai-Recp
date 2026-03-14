@@ -232,9 +232,12 @@ When a patient wants to book an appointment, collect information in this order:
 
 IMPORTANT: Only call the book_appointment tool after you have confirmed ALL required fields.
 
-After the tool responds:
-- If status is "success": Say "Your appointment is confirmed! I've sent a confirmation email to [email]. Your booking reference is [appointment_id]."
-- If you receive an error: Apologise and say "I'm sorry, there seems to be a technical issue. Please call us directly at 046 902 1372 and we'll get you booked right away."
+IMPORTANT: Do NOT announce or assume the booking is confirmed before you receive the tool result.
+When you call the tool, say something like "One moment while I confirm that for you..." then wait silently for the tool response before speaking again.
+
+After receiving the tool result:
+- If the result contains "Booking confirmed": Say "Your appointment is confirmed! I've sent a confirmation email to [email]. Your booking reference is [booking ID from result]."
+- If the result contains "Booking failed" or "System error": Apologise and say "I'm sorry, there seems to be a technical issue. Please call us directly at 046 902 1372 and we'll get you booked right away."
 ```
 
 ---
@@ -263,16 +266,15 @@ curl -X POST https://YOUR-N8N-URL/webhook/dental-booking \
 **Expected result:**
 ```json
 {
-  "status": "success",
-  "message": "Booking confirmed",
-  "appointment_id": "DCN-XXXXXXXXX-XXXX",
-  "booking_details": {
-    "name": "Test Patient",
-    "date": "2024-12-20",
-    "time": "10:00"
-  }
+  "results": [
+    {
+      "toolCallId": "unknown",
+      "result": "Booking confirmed. Your booking ID is DCN-XXXXXXXXX-XXXX. A confirmation email has been sent to YOUR-EMAIL@gmail.com."
+    }
+  ]
 }
 ```
+> **Note:** When called through Vapi (not curl), `toolCallId` will be the real call ID from Vapi. When testing with curl directly, it will be `"unknown"` — that's expected.
 
 **Verify in n8n:**
 - [ ] Workflow execution shows green (success) in the Executions tab
@@ -313,7 +315,7 @@ curl -X POST https://YOUR-N8N-URL/webhook/dental-booking \
   }'
 ```
 - [ ] Returns HTTP 400 status
-- [ ] Response body contains `"status": "error"` and error details
+- [ ] Response body contains `"results"` array with error message
 
 **Test invalid date format:**
 ```bash
