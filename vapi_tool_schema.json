@@ -1,0 +1,74 @@
+{
+  "_comment": "Paste the entire 'tool' object into Vapi's Custom Tool configuration panel.",
+
+  "tool": {
+    "type": "function",
+    "function": {
+      "name": "book_appointment",
+      "description": "Books a patient appointment at Dental Care Ireland. Call this tool after collecting the patient's full name, phone number, email address, the service they need, and their preferred appointment date. Confirms the booking in the calendar and sends an email confirmation to the patient.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The patient's full name, e.g. 'John Murphy'."
+          },
+          "phone": {
+            "type": "string",
+            "description": "The patient's phone number including country code if provided, e.g. '+353 87 123 4567' or '087 123 4567'."
+          },
+          "email": {
+            "type": "string",
+            "description": "The patient's email address for sending the confirmation, e.g. 'john.murphy@email.com'."
+          },
+          "service": {
+            "type": "string",
+            "description": "The type of dental appointment requested. Common values: 'Checkup', 'Cleaning', 'Filling', 'Extraction', 'Whitening', 'Consultation', 'Emergency'."
+          },
+          "date": {
+            "type": "string",
+            "description": "The appointment date in YYYY-MM-DD format, e.g. '2026-04-15'. Convert any spoken date (e.g. 'next Monday', 'April 15th') to this format before calling."
+          },
+          "time": {
+            "type": "string",
+            "description": "The preferred appointment time in HH:MM 24-hour format, e.g. '09:30' or '14:00'. If the patient has no preference, omit this field and the system will default to 14:00."
+          }
+        },
+        "required": ["name", "phone", "email", "service", "date"]
+      }
+    },
+
+    "server": {
+      "url": "YOUR_N8N_WEBHOOK_URL_HERE",
+      "method": "POST",
+      "timeoutSeconds": 20,
+      "headers": {
+        "Content-Type": "application/json"
+      }
+    }
+  },
+
+  "_vapi_static_body_fields": {
+    "_comment": "If Vapi asks for Static Body Fields (key-value pairs), add these exactly as shown.",
+    "source": "vapi-emma",
+    "clinic": "dental-care-ireland"
+  },
+
+  "_vapi_messages": {
+    "_comment": "Paste these into Vapi's Tool Messages section for each tool state.",
+    "request_start": "Let me book that appointment for you right now.",
+    "request_complete": "Your appointment has been confirmed! You'll receive a confirmation email shortly.",
+    "request_failed": "I'm sorry, I wasn't able to book that appointment. Please call us directly at 046 902 1372 and we'll get you booked in.",
+    "request_delayed": "I'm still processing your booking, please bear with me for just a moment."
+  },
+
+  "_example_vapi_call": {
+    "_comment": "This is the JSON body Vapi will POST to your webhook when Emma calls the tool.",
+    "name": "Sarah O'Brien",
+    "phone": "+353 87 555 1234",
+    "email": "sarah.obrien@example.com",
+    "service": "Cleaning",
+    "date": "2026-04-20",
+    "time": "10:30"
+  }
+}

@@ -1,0 +1,349 @@
+{
+  "name": "Dental Care Ireland - AI Receptionist Booking System",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "dental-booking",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-entry",
+      "name": "Webhook - Receive Vapi Booking",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "dental-booking-webhook",
+      "notes": "Entry point. Receives POST from Vapi AI with patient booking data."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// NODE: Validate & Prepare Booking Data\n// PURPOSE: Validate required fields, generate booking ID,\n//          normalise data, and prepare for downstream nodes.\n// ============================================================\n\nconst body = $input.first().json.body || $input.first().json;\n\n// ---- Extract fields ----\nconst name    = (body.name    || '').trim();\nconst phone   = (body.phone   || '').trim();\nconst email   = (body.email   || '').trim();\nconst service = (body.service || '').trim();\nconst date    = (body.date    || '').trim();\nconst time    = (body.time    || '').trim();\n\n// ---- Validation helpers ----\nconst emailRegex = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;\nconst phoneRegex = /^[\\+\\d\\s\\-\\(\\)]{7,20}$/;\nconst dateRegex  = /^\\d{4}-\\d{2}-\\d{2}$/;\n\nconst errors = [];\n\nif (!name)    errors.push('name is required');\nif (!phone)   errors.push('phone is required');\nif (!email)   errors.push('email is required');\nif (!service) errors.push('service is required');\nif (!date)    errors.push('date is required');\n\nif (email  && !emailRegex.test(email))  errors.push('email format is invalid');\nif (phone  && !phoneRegex.test(phone))  errors.push('phone format is invalid');\nif (date   && !dateRegex.test(date))    errors.push('date must be YYYY-MM-DD format');\n\nif (errors.length > 0) {\n  return [{\n    json: {\n      valid: false,\n      errors,\n      statusCode: 400,\n      message: 'Validation failed: ' + errors.join(', ')\n    }\n  }];\n}\n\n// ---- Generate unique booking ID ----\nconst ts     = Date.now();\nconst rand   = Math.floor(1000 + Math.random() * 9000);\nconst bookingId = `DCL-${ts}-${rand}`;\n\n// ---- Resolve appointment time (default 14:00) ----\nconst appointmentTime = time || '14:00';\n\n// ---- Build ISO datetime strings for Google Calendar ----\nconst startISO = `${date}T${appointmentTime}:00`;\nconst [h, m]   = appointmentTime.split(':').map(Number);\nconst endMin   = m + 30;\nconst endH     = h + Math.floor(endMin / 60);\nconst endISO   = `${date}T${String(endH).padStart(2,'0')}:${String(endMin % 60).padStart(2,'0')}:00`;\n\n// ---- Dublin timezone offset (+00:00 winter / +01:00 summer) ----\n// We store local times and let Google Calendar handle TZ via timeZone param.\n\n// ---- Human-readable timestamp for Sheets ----\nconst now = new Date();\nconst timestamp = now.toLocaleString('en-IE', { timeZone: 'Europe/Dublin' });\n\nreturn [{\n  json: {\n    valid: true,\n    bookingId,\n    name,\n    phone,\n    email,\n    service,\n    date,\n    time: appointmentTime,\n    timeWasProvided: !!time,\n    startISO,\n    endISO,\n    timestamp,\n    rawTimestamp: ts\n  }\n}];\n"
+      },
+      "id": "validate-data",
+      "name": "Validate & Prepare Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300],
+      "notes": "Validates all required fields, checks email/phone/date formats, generates booking ID, calculates calendar start/end times."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.valid }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "check-valid",
+      "name": "Validation Passed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [680, 300],
+      "notes": "Routes to error response (400) if validation failed, or continues to booking flow."
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'error', message: $json.message, errors: $json.errors }) }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "respond-400",
+      "name": "Return 400 - Validation Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [900, 480],
+      "notes": "Returns HTTP 400 with error details back to Vapi when validation fails."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log raw webhook request to Logs sheet payload\nconst data = $input.first().json;\nconst now = new Date();\nconst timestamp = now.toLocaleString('en-IE', { timeZone: 'Europe/Dublin' });\n\nreturn [{\n  json: {\n    ...data,\n    logTimestamp: timestamp,\n    logType: 'INCOMING_REQUEST'\n  }\n}];\n"
+      },
+      "id": "prepare-log",
+      "name": "Prepare Log Entry",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300],
+      "notes": "Prepares structured log entry for the Logs sheet before writing to Sheets."
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "SPREADSHEET_ID_HERE",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Logs",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp":    "={{ $json.logTimestamp }}",
+            "BookingID":    "={{ $json.bookingId }}",
+            "Name":         "={{ $json.name }}",
+            "Phone":        "={{ $json.phone }}",
+            "Email":        "={{ $json.email }}",
+            "Service":      "={{ $json.service }}",
+            "Date":         "={{ $json.date }}",
+            "Time":         "={{ $json.time }}",
+            "LogType":      "={{ $json.logType }}",
+            "RawTimestamp": "={{ $json.rawTimestamp }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "log-to-sheets",
+      "name": "Log Request to Sheets (Logs Tab)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [1120, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      },
+      "notes": "Writes every incoming booking request to the Logs sheet for debugging/audit.",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "SPREADSHEET_ID_HERE",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Bookings",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Name":      "={{ $json.name }}",
+            "Phone":     "={{ $json.phone }}",
+            "Email":     "={{ $json.email }}",
+            "Service":   "={{ $json.service }}",
+            "Date":      "={{ $json.date }}",
+            "Time":      "={{ $json.time }}",
+            "Status":    "Pending",
+            "Timestamp": "={{ $json.timestamp }}",
+            "BookingID": "={{ $json.bookingId }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "sheets-booking",
+      "name": "Log Booking to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [1340, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      },
+      "notes": "Appends booking row to 'Bookings' sheet. Columns: Name, Phone, Email, Service, Date, Time, Status, Timestamp, BookingID. continueOnFail=true so a Sheets outage won't break the whole flow.",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "primary",
+          "mode": "list",
+          "cachedResultName": "primary"
+        },
+        "start": "={{ $json.startISO }}",
+        "end": "={{ $json.endISO }}",
+        "additionalFields": {
+          "summary": "={{ $json.name }} - {{ $json.service }}",
+          "description": "=Phone: {{ $json.phone }}\nEmail: {{ $json.email }}\nService: {{ $json.service }}\nBooking ID: {{ $json.bookingId }}",
+          "location": "15 Watergate Street, Navan, Co. Meath, Ireland",
+          "timeZone": "Europe/Dublin"
+        }
+      },
+      "id": "create-calendar-event",
+      "name": "Create Google Calendar Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1,
+      "position": [1560, 300],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "GOOGLE_CALENDAR_CREDENTIAL_ID",
+          "name": "Google Calendar account"
+        }
+      },
+      "notes": "Creates a 30-minute calendar event on the primary calendar. If this node fails, the error branch fires an admin alert and returns HTTP 500 to Vapi."
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Validate & Prepare Data').item.json.email }}",
+        "subject": "Appointment Confirmed - Dental Care Ireland",
+        "emailType": "html",
+        "message": "=<html>\n<body style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;\">\n  <div style=\"background: #2563eb; padding: 20px; border-radius: 8px 8px 0 0; text-align: center;\">\n    <h1 style=\"color: white; margin: 0;\">🦷 Dental Care Ireland</h1>\n    <p style=\"color: #bfdbfe; margin: 5px 0 0;\">Appointment Confirmation</p>\n  </div>\n  <div style=\"background: #f8fafc; padding: 30px; border-radius: 0 0 8px 8px; border: 1px solid #e2e8f0;\">\n    <p style=\"font-size: 16px;\">Hi <strong>{{ $('Validate & Prepare Data').item.json.name }}</strong>,</p>\n    <p>Your appointment at <strong>Dental Care Ireland</strong> has been confirmed!</p>\n    <div style=\"background: white; border-left: 4px solid #2563eb; padding: 16px; margin: 20px 0; border-radius: 0 8px 8px 0;\">\n      <p style=\"margin: 8px 0;\">📅 <strong>Date:</strong> {{ $('Validate & Prepare Data').item.json.date }}</p>\n      <p style=\"margin: 8px 0;\">⏰ <strong>Time:</strong> {{ $('Validate & Prepare Data').item.json.time }}</p>\n      <p style=\"margin: 8px 0;\">🦷 <strong>Service:</strong> {{ $('Validate & Prepare Data').item.json.service }}</p>\n      <p style=\"margin: 8px 0;\">📍 <strong>Location:</strong> 15 Watergate Street, Navan, Co. Meath</p>\n      <p style=\"margin: 8px 0;\">🆔 <strong>Booking ID:</strong> {{ $('Validate & Prepare Data').item.json.bookingId }}</p>\n    </div>\n    <p>If you need to reschedule or cancel, please call us at <strong>046 902 1372</strong>.</p>\n    <p style=\"color: #64748b; font-size: 14px;\">This is an automated confirmation. Please do not reply to this email.</p>\n    <hr style=\"border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;\">\n    <p style=\"margin: 0; color: #64748b; font-size: 13px;\">Dental Care Ireland | 15 Watergate Street, Navan, Co. Meath | 046 902 1372</p>\n  </div>\n</body>\n</html>",
+        "options": {}
+      },
+      "id": "send-confirmation-email",
+      "name": "Send Confirmation Email to Patient",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [1780, 300],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "GMAIL_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      },
+      "notes": "Sends HTML confirmation email to patient. continueOnFail=true so a mail failure won't cancel the booking.",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"success\",\n  \"message\": \"Booking confirmed\",\n  \"appointment_id\": \"{{ $('Validate & Prepare Data').item.json.bookingId }}\",\n  \"booking_details\": {\n    \"name\": \"{{ $('Validate & Prepare Data').item.json.name }}\",\n    \"date\": \"{{ $('Validate & Prepare Data').item.json.date }}\",\n    \"time\": \"{{ $('Validate & Prepare Data').item.json.time }}\",\n    \"service\": \"{{ $('Validate & Prepare Data').item.json.service }}\",\n    \"calendar_event_id\": \"{{ $('Create Google Calendar Event').item.json.id }}\"\n  }\n}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "respond-200",
+      "name": "Return 200 - Success to Vapi",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2000, 300],
+      "notes": "Returns HTTP 200 JSON success response to Vapi so Emma knows booking was created."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build admin alert payload from the calendar error\nconst validatedData = $('Validate & Prepare Data').item.json;\nconst now = new Date();\nconst timestamp = now.toLocaleString('en-IE', { timeZone: 'Europe/Dublin' });\n\nreturn [{\n  json: {\n    errorTimestamp: timestamp,\n    bookingId: validatedData.bookingId || 'N/A',\n    patientName: validatedData.name,\n    patientPhone: validatedData.phone,\n    patientEmail: validatedData.email,\n    service: validatedData.service,\n    date: validatedData.date,\n    time: validatedData.time,\n    errorSource: 'Google Calendar Node'\n  }\n}];\n"
+      },
+      "id": "prepare-error-alert",
+      "name": "Prepare Admin Error Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 520],
+      "notes": "Runs when Calendar creation fails. Packages error details for admin notification."
+    },
+    {
+      "parameters": {
+        "sendTo": "majesticson297@gmail.com",
+        "subject": "🚨 Booking System Error - Dental Care Ireland",
+        "emailType": "html",
+        "message": "=<html>\n<body style=\"font-family: Arial, sans-serif; padding: 20px; color: #333;\">\n  <h2 style=\"color: #dc2626;\">🚨 Booking System Error</h2>\n  <p>A critical error occurred in the AI Receptionist booking system.</p>\n  <table style=\"border-collapse: collapse; width: 100%;\">\n    <tr><td style=\"padding: 8px; background:#fee2e2; font-weight:bold;\">Error Time</td><td style=\"padding: 8px; background:#fee2e2;\">{{ $json.errorTimestamp }}</td></tr>\n    <tr><td style=\"padding: 8px;\">Booking ID</td><td style=\"padding: 8px;\">{{ $json.bookingId }}</td></tr>\n    <tr><td style=\"padding: 8px; background:#f8fafc;\">Patient Name</td><td style=\"padding: 8px; background:#f8fafc;\">{{ $json.patientName }}</td></tr>\n    <tr><td style=\"padding: 8px;\">Patient Phone</td><td style=\"padding: 8px;\">{{ $json.patientPhone }}</td></tr>\n    <tr><td style=\"padding: 8px; background:#f8fafc;\">Patient Email</td><td style=\"padding: 8px; background:#f8fafc;\">{{ $json.patientEmail }}</td></tr>\n    <tr><td style=\"padding: 8px;\">Service</td><td style=\"padding: 8px;\">{{ $json.service }}</td></tr>\n    <tr><td style=\"padding: 8px; background:#f8fafc;\">Date</td><td style=\"padding: 8px; background:#f8fafc;\">{{ $json.date }}</td></tr>\n    <tr><td style=\"padding: 8px;\">Time</td><td style=\"padding: 8px;\">{{ $json.time }}</td></tr>\n    <tr><td style=\"padding: 8px; background:#fee2e2; font-weight:bold;\">Failed Node</td><td style=\"padding: 8px; background:#fee2e2;\">{{ $json.errorSource }}</td></tr>\n  </table>\n  <p style=\"margin-top:20px; color:#dc2626;\"><strong>ACTION REQUIRED:</strong> Please manually create this appointment in Google Calendar and contact the patient to confirm.</p>\n</body>\n</html>",
+        "options": {}
+      },
+      "id": "send-admin-alert",
+      "name": "Send Admin Alert Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [2000, 520],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "GMAIL_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      },
+      "notes": "Emails majesticson297@gmail.com with full booking details when Calendar creation fails."
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"status\": \"error\", \"message\": \"Calendar creation failed. Admin has been notified. Please try again or call 046 902 1372.\" }",
+        "options": {
+          "responseCode": 500
+        }
+      },
+      "id": "respond-500",
+      "name": "Return 500 - Calendar Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2220, 520],
+      "notes": "Returns HTTP 500 to Vapi when calendar creation fails so Emma can inform the patient."
+    }
+  ],
+  "connections": {
+    "Webhook - Receive Vapi Booking": {
+      "main": [
+        [{ "node": "Validate & Prepare Data", "type": "main", "index": 0 }]
+      ]
+    },
+    "Validate & Prepare Data": {
+      "main": [
+        [{ "node": "Validation Passed?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Validation Passed?": {
+      "main": [
+        [{ "node": "Prepare Log Entry", "type": "main", "index": 0 }],
+        [{ "node": "Return 400 - Validation Error", "type": "main", "index": 0 }]
+      ]
+    },
+    "Prepare Log Entry": {
+      "main": [
+        [{ "node": "Log Request to Sheets (Logs Tab)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Log Request to Sheets (Logs Tab)": {
+      "main": [
+        [{ "node": "Log Booking to Google Sheets", "type": "main", "index": 0 }]
+      ]
+    },
+    "Log Booking to Google Sheets": {
+      "main": [
+        [{ "node": "Create Google Calendar Event", "type": "main", "index": 0 }]
+      ]
+    },
+    "Create Google Calendar Event": {
+      "main": [
+        [{ "node": "Send Confirmation Email to Patient", "type": "main", "index": 0 }]
+      ],
+      "error": [
+        [{ "node": "Prepare Admin Error Alert", "type": "main", "index": 0 }]
+      ]
+    },
+    "Send Confirmation Email to Patient": {
+      "main": [
+        [{ "node": "Return 200 - Success to Vapi", "type": "main", "index": 0 }]
+      ]
+    },
+    "Prepare Admin Error Alert": {
+      "main": [
+        [{ "node": "Send Admin Alert Email", "type": "main", "index": 0 }]
+      ]
+    },
+    "Send Admin Alert Email": {
+      "main": [
+        [{ "node": "Return 500 - Calendar Error", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Dublin",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": null,
+  "tags": [
+    { "name": "dental-care-ireland" },
+    { "name": "vapi-integration" },
+    { "name": "production" }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2026-03-14T00:00:00.000Z",
+  "versionId": "1"
+}
