@@ -1,0 +1,104 @@
+{
+  "name": "Vapi Post-Call Webhook – Call History Logger",
+  "nodes": [
+    {
+      "id": "bbbbbbbb-0001-0001-0001-000000000001",
+      "name": "Vapi End-of-Call Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "vapi-end-of-call",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vapi-end-of-call",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "bbbbbbbb-0002-0002-0002-000000000002",
+      "name": "Parse Vapi Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Vapi sends the End-of-Call Report in the request body.\n// Typical Vapi payload shape:\n// {\n//   message: {\n//     type: 'end-of-call-report',\n//     call: { id, phoneNumberId, ... },\n//     artifact: { transcript, recordingUrl, ... },\n//     analysis: { summary, successEvaluation },\n//     startedAt, endedAt,\n//     endedReason\n//   }\n// }\n\nconst body = $input.item.json.body || $input.item.json;\nconst msg  = body.message || body;\n\nconst call     = msg.call || {};\nconst artifact = msg.artifact || {};\nconst analysis = msg.analysis || {};\n\nconst callId         = call.id || 'unknown';\nconst phoneNumber    = call.customer?.number || call.phoneNumberId || 'unknown';\nconst startedAt      = msg.startedAt || new Date().toISOString();\nconst endedAt        = msg.endedAt   || new Date().toISOString();\nconst endedReason    = msg.endedReason || 'unknown';\n\n// Duration in seconds\nlet durationSec = 0;\nif (startedAt && endedAt) {\n  durationSec = Math.round((new Date(endedAt) - new Date(startedAt)) / 1000);\n}\n\nconst transcript   = artifact.transcript   || '';\nconst recordingUrl = artifact.recordingUrl || '';\nconst summary      = analysis.summary           || '';\nconst outcome      = analysis.successEvaluation || 'unknown';\n\nreturn [{\n  json: {\n    callId,\n    phoneNumber,\n    startedAt,\n    endedAt,\n    durationSec,\n    endedReason,\n    summary,\n    outcome,\n    transcript,\n    recordingUrl,\n    loggedAt: new Date().toISOString()\n  }\n}];"
+      }
+    },
+    {
+      "id": "bbbbbbbb-0003-0003-0003-000000000003",
+      "name": "Append to Call History Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [740, 300],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "Google Sheets Account" } },
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": { "__rl": true, "value": "REPLACE_WITH_CALL_HISTORY_SPREADSHEET_ID", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "gid=0", "mode": "list", "cachedResultName": "CallHistory" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "CallID":        "={{ $json.callId }}",
+            "PhoneNumber":   "={{ $json.phoneNumber }}",
+            "StartedAt":     "={{ $json.startedAt }}",
+            "EndedAt":       "={{ $json.endedAt }}",
+            "DurationSec":   "={{ $json.durationSec }}",
+            "EndedReason":   "={{ $json.endedReason }}",
+            "Summary":       "={{ $json.summary }}",
+            "Outcome":       "={{ $json.outcome }}",
+            "Transcript":    "={{ $json.transcript }}",
+            "RecordingURL":  "={{ $json.recordingUrl }}",
+            "LoggedAt":      "={{ $json.loggedAt }}"
+          },
+          "matchingColumns": []
+        }
+      }
+    },
+    {
+      "id": "bbbbbbbb-0004-0004-0004-000000000004",
+      "name": "Respond 200 OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1000, 300],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'received', callId: $('Parse Vapi Report').item.json.callId }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+
+  "connections": {
+    "Vapi End-of-Call Webhook": {
+      "main": [
+        [{ "node": "Parse Vapi Report", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parse Vapi Report": {
+      "main": [
+        [{ "node": "Append to Call History Sheet", "type": "main", "index": 0 }]
+      ]
+    },
+    "Append to Call History Sheet": {
+      "main": [
+        [{ "node": "Respond 200 OK", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true
+  },
+  "versionId": "1",
+  "id": "vapi-post-call-webhook-v1",
+  "tags": [
+    { "createdAt": "2024-01-01", "updatedAt": "2024-01-01", "id": "tag3", "name": "vapi" },
+    { "createdAt": "2024-01-01", "updatedAt": "2024-01-01", "id": "tag4", "name": "call-history" }
+  ]
+}

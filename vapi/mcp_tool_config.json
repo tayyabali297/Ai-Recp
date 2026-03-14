@@ -1,0 +1,182 @@
+{
+  "_comment": "Paste this configuration into your Vapi assistant's 'Tools' section. Each object below is one Custom Tool. Replace YOUR_N8N_MCP_URL with the URL shown on your MCP Server Trigger node after activation.",
+
+  "mcpServers": [
+    {
+      "name": "voice-receptionist-mcp",
+      "_comment": "MCP Server config – use this if your Vapi plan supports MCP servers directly",
+      "url": "YOUR_N8N_MCP_URL",
+      "transport": "http"
+    }
+  ],
+
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "client_lookup",
+        "description": "Search the CRM database by email address. Returns the client's name and status if they are an existing client, or 'New Client' if they are not found. Call this at the start of every conversation.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "email": {
+              "type": "string",
+              "description": "The caller's email address to look up in the CRM."
+            }
+          },
+          "required": ["email"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "new_client_crm",
+        "description": "Add a brand-new client to the CRM database. Call this only after confirming the client does not exist (client_lookup returned 'New Client').",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Full name of the new client."
+            },
+            "email": {
+              "type": "string",
+              "description": "Email address of the new client."
+            },
+            "phone": {
+              "type": "string",
+              "description": "Phone number of the new client."
+            }
+          },
+          "required": ["name", "email", "phone"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "check_availability",
+        "description": "Check the calendar for available appointment slots within a given time window. Returns a list of free 1-hour slots and a list of busy times. All times must be in ISO 8601 format.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "startTime": {
+              "type": "string",
+              "description": "Start of the availability search window in ISO 8601 format, e.g. '2025-03-15T09:00:00Z'."
+            },
+            "endTime": {
+              "type": "string",
+              "description": "End of the availability search window in ISO 8601 format, e.g. '2025-03-15T17:00:00Z'."
+            }
+          },
+          "required": ["startTime", "endTime"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "book_event",
+        "description": "Book a 1-hour appointment on the calendar and log it in the booking database. Returns the calendar event ID which must be stored for future rescheduling or cancellation.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "email": {
+              "type": "string",
+              "description": "Client's email address."
+            },
+            "name": {
+              "type": "string",
+              "description": "Client's full name."
+            },
+            "phone": {
+              "type": "string",
+              "description": "Client's phone number."
+            },
+            "startTime": {
+              "type": "string",
+              "description": "Appointment start time in ISO 8601 format, e.g. '2025-03-15T14:00:00Z'."
+            },
+            "title": {
+              "type": "string",
+              "description": "Optional event title. Defaults to 'Appointment – {email}' if omitted."
+            }
+          },
+          "required": ["email", "name", "startTime"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "lookup_appointment",
+        "description": "Find an existing appointment in the booking log by email and optional time window. Returns the calendar event ID and appointment details. Use this before rescheduling or cancelling.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "email": {
+              "type": "string",
+              "description": "Client's email address to search for."
+            },
+            "startTime": {
+              "type": "string",
+              "description": "Optional: target appointment time in ISO 8601 format to narrow the search. If omitted, returns the most recent appointment."
+            },
+            "windowHours": {
+              "type": "number",
+              "description": "Optional: search window in hours around startTime. Defaults to 1 hour."
+            }
+          },
+          "required": ["email"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "update_appointment",
+        "description": "Reschedule an existing appointment to a new time using its event ID. Updates both the Google Calendar event and the booking log. Always call lookup_appointment first to obtain the eventId.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "eventId": {
+              "type": "string",
+              "description": "The Google Calendar event ID returned by book_event or lookup_appointment."
+            },
+            "newStartTime": {
+              "type": "string",
+              "description": "New appointment start time in ISO 8601 format, e.g. '2025-03-16T10:00:00Z'."
+            }
+          },
+          "required": ["eventId", "newStartTime"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "delete_appointment",
+        "description": "Cancel and delete an existing appointment using its event ID. Removes the event from Google Calendar and marks the booking log entry as Cancelled. Always call lookup_appointment first to obtain the eventId.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "eventId": {
+              "type": "string",
+              "description": "The Google Calendar event ID to delete."
+            }
+          },
+          "required": ["eventId"]
+        }
+      }
+    }
+  ],
+
+  "serverUrl_placeholder": "YOUR_N8N_MCP_URL",
+  "_usage_notes": [
+    "For Vapi Custom Tools (REST fallback): set serverUrl to your n8n webhook URL and method to POST.",
+    "For Vapi MCP integration: set the MCP server URL to the URL shown on the activated MCP Server Trigger node.",
+    "All datetime values must be ISO 8601 with timezone offset or 'Z' for UTC.",
+    "The AI should store the eventId returned by book_event in conversation memory for use by update/delete tools."
+  ]
+}

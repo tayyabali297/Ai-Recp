@@ -1,0 +1,574 @@
+{
+  "name": "n8n MCP Voice Receptionist Backend",
+  "nodes": [
+    {
+      "id": "aaaaaaaa-0001-0001-0001-000000000001",
+      "name": "MCP Server Trigger",
+      "type": "@n8n/n8n-nodes-langchain.mcpTrigger",
+      "typeVersion": 1,
+      "position": [240, 560],
+      "webhookId": "mcp-voice-receptionist",
+      "parameters": {}
+    },
+    {
+      "id": "aaaaaaaa-0002-0002-0002-000000000002",
+      "name": "Route by Tool Name",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [480, 560],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [
+                  {
+                    "id": "rule-01",
+                    "leftValue": "={{ $json.name }}",
+                    "rightValue": "client_lookup",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "client_lookup"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [
+                  {
+                    "id": "rule-02",
+                    "leftValue": "={{ $json.name }}",
+                    "rightValue": "new_client_crm",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "new_client_crm"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [
+                  {
+                    "id": "rule-03",
+                    "leftValue": "={{ $json.name }}",
+                    "rightValue": "check_availability",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "check_availability"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [
+                  {
+                    "id": "rule-04",
+                    "leftValue": "={{ $json.name }}",
+                    "rightValue": "book_event",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "book_event"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [
+                  {
+                    "id": "rule-05",
+                    "leftValue": "={{ $json.name }}",
+                    "rightValue": "lookup_appointment",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "lookup_appointment"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [
+                  {
+                    "id": "rule-06",
+                    "leftValue": "={{ $json.name }}",
+                    "rightValue": "update_appointment",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "update_appointment"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [
+                  {
+                    "id": "rule-07",
+                    "leftValue": "={{ $json.name }}",
+                    "rightValue": "delete_appointment",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "delete_appointment"
+            }
+          ]
+        },
+        "options": {},
+        "fallbackOutput": "extra"
+      }
+    },
+
+    {
+      "id": "aaaaaaaa-0003-0003-0003-000000000003",
+      "name": "CRM Lookup by Email",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [740, 120],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "Google Sheets Account" } },
+      "parameters": {
+        "operation": "readOrSearch",
+        "documentId": { "__rl": true, "value": "REPLACE_WITH_CRM_SPREADSHEET_ID", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "gid=0", "mode": "list", "cachedResultName": "CRM" },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Email",
+              "lookupValue": "={{ $json.arguments.email }}"
+            }
+          ]
+        },
+        "options": { "returnFirstMatch": true }
+      }
+    },
+    {
+      "id": "aaaaaaaa-0004-0004-0004-000000000004",
+      "name": "Process CRM Lookup Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 120],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Grab all rows returned by Google Sheets\nconst rows = $input.all();\n\nif (rows.length === 0 || !rows[0].json || !rows[0].json.Email) {\n  // No matching record found – treat as new client\n  return [{\n    json: {\n      status: 'new_client',\n      message: 'New Client',\n      found: false\n    }\n  }];\n}\n\n// Client exists in CRM\nconst row = rows[0].json;\nreturn [{\n  json: {\n    status: 'existing_client',\n    found: true,\n    name: row.Name || '',\n    email: row.Email || '',\n    phone: row.Phone || '',\n    clientStatus: row.Status || 'Active',\n    message: `Client found: ${row.Name}, Status: ${row.Status || 'Active'}`\n  }\n}];"
+      }
+    },
+
+    {
+      "id": "aaaaaaaa-0005-0005-0005-000000000005",
+      "name": "CRM Append New Client",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [740, 280],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "Google Sheets Account" } },
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": { "__rl": true, "value": "REPLACE_WITH_CRM_SPREADSHEET_ID", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "gid=0", "mode": "list", "cachedResultName": "CRM" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Name": "={{ $json.arguments.name }}",
+            "Email": "={{ $json.arguments.email }}",
+            "Phone": "={{ $json.arguments.phone }}",
+            "Status": "Active",
+            "CreatedAt": "={{ new Date().toISOString() }}"
+          },
+          "matchingColumns": []
+        }
+      }
+    },
+    {
+      "id": "aaaaaaaa-0006-0006-0006-000000000006",
+      "name": "Set New Client Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1000, 280],
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            { "id": "a1", "name": "status", "value": "success", "type": "string" },
+            { "id": "a2", "name": "message", "value": "={{ 'New client added to CRM: ' + $('CRM Append New Client').item.json.arguments.name }}", "type": "string" },
+            { "id": "a3", "name": "name", "value": "={{ $('MCP Server Trigger').item.json.arguments.name }}", "type": "string" },
+            { "id": "a4", "name": "email", "value": "={{ $('MCP Server Trigger').item.json.arguments.email }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      }
+    },
+
+    {
+      "id": "aaaaaaaa-0007-0007-0007-000000000007",
+      "name": "Calendar Get Events",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.2,
+      "position": [740, 440],
+      "credentials": { "googleCalendarOAuth2Api": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "Google Calendar Account" } },
+      "parameters": {
+        "operation": "getAll",
+        "calendar": { "__rl": true, "value": "primary", "mode": "list", "cachedResultName": "Primary" },
+        "returnAll": true,
+        "timeMin": "={{ $json.arguments.startTime }}",
+        "timeMax": "={{ $json.arguments.endTime }}",
+        "options": {
+          "fields": "id,summary,start,end,status"
+        }
+      }
+    },
+    {
+      "id": "aaaaaaaa-0008-0008-0008-000000000008",
+      "name": "Process Availability",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 440],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Collect all calendar events in the requested window\nconst events = $input.all();\n\n// Build a list of busy slots\nconst busySlots = events\n  .filter(e => e.json && e.json.start)\n  .map(e => ({\n    start: e.json.start.dateTime || e.json.start.date,\n    end: e.json.end.dateTime || e.json.end.date,\n    summary: e.json.summary || 'Busy'\n  }));\n\n// Retrieve the requested window from the original trigger args\nconst triggerArgs = $('MCP Server Trigger').item.json.arguments;\nconst windowStart = new Date(triggerArgs.startTime);\nconst windowEnd   = new Date(triggerArgs.endTime);\n\n// Build candidate 1-hour slots (on the hour)\nconst availableSlots = [];\nlet cursor = new Date(windowStart);\ncursor.setMinutes(0, 0, 0);\nif (cursor < windowStart) cursor.setHours(cursor.getHours() + 1);\n\nwhile (cursor < windowEnd) {\n  const slotEnd = new Date(cursor.getTime() + 60 * 60 * 1000);\n  if (slotEnd > windowEnd) break;\n\n  // Check overlap with any busy event\n  const isBusy = busySlots.some(b => {\n    const bs = new Date(b.start);\n    const be = new Date(b.end);\n    return cursor < be && slotEnd > bs;\n  });\n\n  if (!isBusy) {\n    availableSlots.push({\n      start: cursor.toISOString(),\n      end: slotEnd.toISOString()\n    });\n  }\n  cursor = slotEnd;\n}\n\nreturn [{\n  json: {\n    status: 'success',\n    busySlots,\n    availableSlots,\n    message: availableSlots.length > 0\n      ? `Found ${availableSlots.length} available slot(s)`\n      : 'No available slots in the requested window'\n  }\n}];"
+      }
+    },
+
+    {
+      "id": "aaaaaaaa-0009-0009-0009-000000000009",
+      "name": "Calendar Create Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.2,
+      "position": [740, 620],
+      "credentials": { "googleCalendarOAuth2Api": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "Google Calendar Account" } },
+      "parameters": {
+        "operation": "create",
+        "calendar": { "__rl": true, "value": "primary", "mode": "list", "cachedResultName": "Primary" },
+        "start": "={{ $json.arguments.startTime }}",
+        "end": "={{ new Date(new Date($json.arguments.startTime).getTime() + 60 * 60 * 1000).toISOString() }}",
+        "summary": "={{ $json.arguments.title || ('Appointment – ' + $json.arguments.email) }}",
+        "additionalFields": {
+          "description": "={{ 'Client: ' + $json.arguments.name + '\\nEmail: ' + $json.arguments.email + '\\nPhone: ' + ($json.arguments.phone || 'N/A') }}",
+          "attendees": "={{ $json.arguments.email }}"
+        }
+      }
+    },
+    {
+      "id": "aaaaaaaa-0010-0010-0010-000000000010",
+      "name": "Booking Log Append",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [1000, 620],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "Google Sheets Account" } },
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": { "__rl": true, "value": "REPLACE_WITH_BOOKING_LOG_SPREADSHEET_ID", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "gid=0", "mode": "list", "cachedResultName": "BookingLog" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Email": "={{ $('MCP Server Trigger').item.json.arguments.email }}",
+            "Name": "={{ $('MCP Server Trigger').item.json.arguments.name || '' }}",
+            "StartTime": "={{ $('MCP Server Trigger').item.json.arguments.startTime }}",
+            "EventID": "={{ $json.id }}",
+            "Status": "Confirmed",
+            "CreatedAt": "={{ new Date().toISOString() }}"
+          },
+          "matchingColumns": []
+        }
+      }
+    },
+    {
+      "id": "aaaaaaaa-0011-0011-0011-000000000011",
+      "name": "Set Book Event Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1260, 620],
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            { "id": "b1", "name": "status", "value": "success", "type": "string" },
+            { "id": "b2", "name": "eventId", "value": "={{ $('Calendar Create Event').item.json.id }}", "type": "string" },
+            { "id": "b3", "name": "startTime", "value": "={{ $('MCP Server Trigger').item.json.arguments.startTime }}", "type": "string" },
+            { "id": "b4", "name": "endTime", "value": "={{ new Date(new Date($('MCP Server Trigger').item.json.arguments.startTime).getTime() + 60 * 60 * 1000).toISOString() }}", "type": "string" },
+            { "id": "b5", "name": "message", "value": "={{ 'Appointment booked. Event ID: ' + $('Calendar Create Event').item.json.id }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      }
+    },
+
+    {
+      "id": "aaaaaaaa-0012-0012-0012-000000000012",
+      "name": "Booking Log Lookup",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [740, 800],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "Google Sheets Account" } },
+      "parameters": {
+        "operation": "readOrSearch",
+        "documentId": { "__rl": true, "value": "REPLACE_WITH_BOOKING_LOG_SPREADSHEET_ID", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "gid=0", "mode": "list", "cachedResultName": "BookingLog" },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Email",
+              "lookupValue": "={{ $json.arguments.email }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "aaaaaaaa-0013-0013-0013-000000000013",
+      "name": "Process Appointment Lookup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 800],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const rows = $input.all();\nconst args = $('MCP Server Trigger').item.json.arguments;\nconst targetTime = args.startTime ? new Date(args.startTime) : null;\nconst windowHours = args.windowHours || 1;\n\nif (rows.length === 0 || !rows[0].json || !rows[0].json.Email) {\n  return [{ json: { status: 'not_found', found: false, message: 'Error: Appointment not found for the given email.' } }];\n}\n\n// If a startTime window is given, filter to the closest match\nlet match = rows[0].json;\nif (targetTime) {\n  const windowMs = windowHours * 60 * 60 * 1000;\n  const filtered = rows.filter(r => {\n    const rowTime = new Date(r.json.StartTime);\n    return Math.abs(rowTime - targetTime) <= windowMs;\n  });\n  if (filtered.length === 0) {\n    return [{ json: { status: 'not_found', found: false, message: 'Error: No appointment found in the specified time window.' } }];\n  }\n  match = filtered[0].json;\n}\n\nreturn [{\n  json: {\n    status: 'found',\n    found: true,\n    eventId: match.EventID,\n    email: match.Email,\n    name: match.Name || '',\n    startTime: match.StartTime,\n    appointmentStatus: match.Status,\n    message: `Appointment found. Event ID: ${match.EventID}`\n  }\n}];"
+      }
+    },
+
+    {
+      "id": "aaaaaaaa-0014-0014-0014-000000000014",
+      "name": "Calendar Update Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.2,
+      "position": [740, 1000],
+      "credentials": { "googleCalendarOAuth2Api": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "Google Calendar Account" } },
+      "parameters": {
+        "operation": "update",
+        "calendar": { "__rl": true, "value": "primary", "mode": "list", "cachedResultName": "Primary" },
+        "eventId": "={{ $json.arguments.eventId }}",
+        "updateFields": {
+          "start": "={{ $json.arguments.newStartTime }}",
+          "end": "={{ new Date(new Date($json.arguments.newStartTime).getTime() + 60 * 60 * 1000).toISOString() }}"
+        }
+      }
+    },
+    {
+      "id": "aaaaaaaa-0015-0015-0015-000000000015",
+      "name": "Booking Log Update Row",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [1000, 1000],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "Google Sheets Account" } },
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": { "__rl": true, "value": "REPLACE_WITH_BOOKING_LOG_SPREADSHEET_ID", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "gid=0", "mode": "list", "cachedResultName": "BookingLog" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "EventID": "={{ $('MCP Server Trigger').item.json.arguments.eventId }}",
+            "StartTime": "={{ $('MCP Server Trigger').item.json.arguments.newStartTime }}",
+            "Status": "Rescheduled",
+            "UpdatedAt": "={{ new Date().toISOString() }}"
+          },
+          "matchingColumns": ["EventID"]
+        }
+      }
+    },
+    {
+      "id": "aaaaaaaa-0016-0016-0016-000000000016",
+      "name": "Set Update Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1260, 1000],
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            { "id": "c1", "name": "status", "value": "success", "type": "string" },
+            { "id": "c2", "name": "eventId", "value": "={{ $('MCP Server Trigger').item.json.arguments.eventId }}", "type": "string" },
+            { "id": "c3", "name": "newStartTime", "value": "={{ $('MCP Server Trigger').item.json.arguments.newStartTime }}", "type": "string" },
+            { "id": "c4", "name": "message", "value": "={{ 'Appointment rescheduled to ' + $('MCP Server Trigger').item.json.arguments.newStartTime }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      }
+    },
+
+    {
+      "id": "aaaaaaaa-0017-0017-0017-000000000017",
+      "name": "Calendar Delete Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.2,
+      "position": [740, 1200],
+      "credentials": { "googleCalendarOAuth2Api": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "Google Calendar Account" } },
+      "parameters": {
+        "operation": "delete",
+        "calendar": { "__rl": true, "value": "primary", "mode": "list", "cachedResultName": "Primary" },
+        "eventId": "={{ $json.arguments.eventId }}"
+      }
+    },
+    {
+      "id": "aaaaaaaa-0018-0018-0018-000000000018",
+      "name": "Booking Log Mark Cancelled",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [1000, 1200],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "Google Sheets Account" } },
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": { "__rl": true, "value": "REPLACE_WITH_BOOKING_LOG_SPREADSHEET_ID", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "gid=0", "mode": "list", "cachedResultName": "BookingLog" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "EventID": "={{ $('MCP Server Trigger').item.json.arguments.eventId }}",
+            "Status": "Cancelled",
+            "UpdatedAt": "={{ new Date().toISOString() }}"
+          },
+          "matchingColumns": ["EventID"]
+        }
+      }
+    },
+    {
+      "id": "aaaaaaaa-0019-0019-0019-000000000019",
+      "name": "Set Delete Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1260, 1200],
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            { "id": "d1", "name": "status", "value": "success", "type": "string" },
+            { "id": "d2", "name": "eventId", "value": "={{ $('MCP Server Trigger').item.json.arguments.eventId }}", "type": "string" },
+            { "id": "d3", "name": "message", "value": "={{ 'Appointment cancelled. Event ID: ' + $('MCP Server Trigger').item.json.arguments.eventId }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      }
+    },
+
+    {
+      "id": "aaaaaaaa-0020-0020-0020-000000000020",
+      "name": "Set Unknown Tool Error",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [740, 1400],
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            { "id": "e1", "name": "status", "value": "error", "type": "string" },
+            { "id": "e2", "name": "message", "value": "={{ 'Error: Unknown tool name – ' + $json.name }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      }
+    }
+  ],
+
+  "connections": {
+    "MCP Server Trigger": {
+      "main": [
+        [{ "node": "Route by Tool Name", "type": "main", "index": 0 }]
+      ]
+    },
+    "Route by Tool Name": {
+      "main": [
+        [{ "node": "CRM Lookup by Email",        "type": "main", "index": 0 }],
+        [{ "node": "CRM Append New Client",       "type": "main", "index": 0 }],
+        [{ "node": "Calendar Get Events",         "type": "main", "index": 0 }],
+        [{ "node": "Calendar Create Event",       "type": "main", "index": 0 }],
+        [{ "node": "Booking Log Lookup",          "type": "main", "index": 0 }],
+        [{ "node": "Calendar Update Event",       "type": "main", "index": 0 }],
+        [{ "node": "Calendar Delete Event",       "type": "main", "index": 0 }],
+        [{ "node": "Set Unknown Tool Error",      "type": "main", "index": 0 }]
+      ]
+    },
+    "CRM Lookup by Email": {
+      "main": [
+        [{ "node": "Process CRM Lookup Result", "type": "main", "index": 0 }]
+      ]
+    },
+    "CRM Append New Client": {
+      "main": [
+        [{ "node": "Set New Client Response", "type": "main", "index": 0 }]
+      ]
+    },
+    "Calendar Get Events": {
+      "main": [
+        [{ "node": "Process Availability", "type": "main", "index": 0 }]
+      ]
+    },
+    "Calendar Create Event": {
+      "main": [
+        [{ "node": "Booking Log Append", "type": "main", "index": 0 }]
+      ]
+    },
+    "Booking Log Append": {
+      "main": [
+        [{ "node": "Set Book Event Response", "type": "main", "index": 0 }]
+      ]
+    },
+    "Booking Log Lookup": {
+      "main": [
+        [{ "node": "Process Appointment Lookup", "type": "main", "index": 0 }]
+      ]
+    },
+    "Calendar Update Event": {
+      "main": [
+        [{ "node": "Booking Log Update Row", "type": "main", "index": 0 }]
+      ]
+    },
+    "Booking Log Update Row": {
+      "main": [
+        [{ "node": "Set Update Response", "type": "main", "index": 0 }]
+      ]
+    },
+    "Calendar Delete Event": {
+      "main": [
+        [{ "node": "Booking Log Mark Cancelled", "type": "main", "index": 0 }]
+      ]
+    },
+    "Booking Log Mark Cancelled": {
+      "main": [
+        [{ "node": "Set Delete Response", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "YOUR_N8N_INSTANCE_ID"
+  },
+  "id": "mcp-voice-receptionist-v1",
+  "tags": [
+    { "createdAt": "2024-01-01", "updatedAt": "2024-01-01", "id": "tag1", "name": "voice-receptionist" },
+    { "createdAt": "2024-01-01", "updatedAt": "2024-01-01", "id": "tag2", "name": "mcp" }
+  ]
+}
